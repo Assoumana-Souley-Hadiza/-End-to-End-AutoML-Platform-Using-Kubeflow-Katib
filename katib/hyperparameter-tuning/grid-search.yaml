@@ -1,0 +1,88 @@
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: grid-search-experiment
+  namespace: kubeflow
+spec:
+  algorithm:
+    algorithmName: grid
+  objective:
+    type: maximize
+    objectiveMetricName: accuracy
+    additionalMetricNames:
+      - loss
+      - f1_score
+  parameters:
+    - name: learning_rate
+      parameterType: categorical
+      feasibleSpace:
+        list:
+          - "0.001"
+          - "0.01"
+          - "0.1"
+    - name: batch_size
+      parameterType: categorical
+      feasibleSpace:
+        list:
+          - "32"
+          - "64"
+          - "128"
+    - name: optimizer
+      parameterType: categorical
+      feasibleSpace:
+        list:
+          - "adam"
+          - "sgd"
+          - "rmsprop"
+    - name: dropout_rate
+      parameterType: categorical
+      feasibleSpace:
+        list:
+          - "0.1"
+          - "0.3"
+          - "0.5"
+  parallelTrialCount: 9
+  maxTrialCount: 81
+  maxFailedTrialCount: 10
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+      - name: learningRate
+        description: Learning rate
+        reference: ${trialParameters.learningRate}
+      - name: batchSize
+        description: Batch size
+        reference: ${trialParameters.batchSize}
+      - name: optimizer
+        description: Optimizer
+        reference: ${trialParameters.optimizer}
+      - name: dropoutRate
+        description: Dropout rate
+        reference: ${trialParameters.dropoutRate}
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            containers:
+              - name: training-container
+                image: automl-training:latest
+                command:
+                  - python
+                  - /app/src/training/train.py
+                  - --learning-rate=${trialParameters.learningRate}
+                  - --batch-size=${trialParameters.batchSize}
+                  - --optimizer=${trialParameters.optimizer}
+                  - --dropout-rate=${trialParameters.dropoutRate}
+                resources:
+                  limits:
+                    cpu: "2"
+                    memory: 4Gi
+                  requests:
+                    cpu: "1"
+                    memory: 2Gi
+            restartPolicy: Never
+
+
+

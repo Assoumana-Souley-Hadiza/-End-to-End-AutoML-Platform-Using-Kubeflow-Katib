@@ -1,0 +1,27 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: automl-pytorch-model
+  namespace: kubeflow
+  annotations:
+    serving.kserve.io/deploymentMode: "Serverless"
+    serving.kserve.io/autoscalerClass: "hpa"
+spec:
+  predictor:
+    pytorch:
+      storageUri: "s3://models/automl-pytorch-model"
+      resources:
+        requests:
+          cpu: "1"
+          memory: "2Gi"
+          nvidia.com/gpu: "1"
+        limits:
+          cpu: "2"
+          memory: "4Gi"
+          nvidia.com/gpu: "1"
+      runtimeVersion: "2.1.0"
+    minReplicas: 1
+    maxReplicas: 5
+
+
+

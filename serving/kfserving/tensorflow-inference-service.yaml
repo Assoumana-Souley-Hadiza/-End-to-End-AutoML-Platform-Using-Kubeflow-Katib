@@ -1,0 +1,29 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: automl-tensorflow-model
+  namespace: kubeflow
+  annotations:
+    serving.kserve.io/deploymentMode: "Serverless"
+    serving.kserve.io/autoscalerClass: "hpa"
+    serving.kserve.io/metric: "cpu"
+    serving.kserve.io/target: "80"
+spec:
+  predictor:
+    tensorflow:
+      storageUri: "s3://models/automl-model"
+      resources:
+        requests:
+          cpu: "1"
+          memory: "2Gi"
+        limits:
+          cpu: "2"
+          memory: "4Gi"
+      runtimeVersion: "2.13.0"
+    minReplicas: 1
+    maxReplicas: 10
+    scaleTarget: 50
+    scaleMetric: "cpu"
+
+
+

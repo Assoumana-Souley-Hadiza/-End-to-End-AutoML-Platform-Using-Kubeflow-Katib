@@ -1,0 +1,30 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: automl-custom-model
+  namespace: kubeflow
+  annotations:
+    serving.kserve.io/deploymentMode: "Serverless"
+spec:
+  predictor:
+    containers:
+      - name: kfserving-container
+        image: automl-serving:latest
+        env:
+          - name: MODEL_NAME
+            value: "automl-model"
+          - name: MODEL_PATH
+            value: "/mnt/models"
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+    storageUri: "s3://models/automl-custom-model"
+    minReplicas: 1
+    maxReplicas: 10
+
+
+

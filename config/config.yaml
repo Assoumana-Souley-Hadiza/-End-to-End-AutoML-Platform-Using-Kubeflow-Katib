@@ -1,0 +1,58 @@
+# AutoML Platform Configuration
+
+kubernetes:
+  namespace: kubeflow
+  kubeconfig_path: ~/.kube/config
+  context: ""
+
+kubeflow:
+  namespace: kubeflow
+  host: "http://localhost:8080"
+  username: ""
+  password: ""
+
+katib:
+  namespace: kubeflow
+  db_driver: mysql
+  db_name: katib
+  db_user: root
+  db_password: ""
+  default_algorithm: bayesian-optimization
+  default_max_trials: 30
+  default_parallel_trials: 3
+
+kfserving:
+  namespace: kubeflow
+  storage_uri: "s3://models"
+  default_runtime: tensorflow
+  min_replicas: 1
+  max_replicas: 10
+
+model:
+  storage_path: "/models"
+  registry_path: "/tmp/model_registry"
+  supported_formats:
+    - tensorflow
+    - pytorch
+    - sklearn
+    - onnx
+
+training:
+  default_epochs: 10
+  default_batch_size: 32
+  default_learning_rate: 0.01
+  gpu_enabled: true
+  distributed: false
+
+mlflow:
+  enabled: false
+  tracking_uri: "http://mlflow-server:5000"
+  experiment_name: "automl-experiments"
+
+wandb:
+  enabled: false
+  project: "automl-kubeflow"
+  api_key: ""
+
+
+

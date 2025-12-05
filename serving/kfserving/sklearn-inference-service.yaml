@@ -1,0 +1,24 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: automl-sklearn-model
+  namespace: kubeflow
+  annotations:
+    serving.kserve.io/deploymentMode: "Serverless"
+spec:
+  predictor:
+    sklearn:
+      storageUri: "s3://models/automl-sklearn-model"
+      resources:
+        requests:
+          cpu: "1"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "2Gi"
+      runtimeVersion: "1.3.2"
+    minReplicas: 1
+    maxReplicas: 10
+
+
+

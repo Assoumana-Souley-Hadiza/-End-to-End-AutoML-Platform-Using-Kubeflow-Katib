@@ -1,0 +1,89 @@
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: bayesian-optimization-experiment
+  namespace: kubeflow
+spec:
+  algorithm:
+    algorithmName: bayesian-optimization
+    algorithmSettings:
+      - name: "random_state"
+        value: "42"
+      - name: "init_points"
+        value: "5"
+      - name: "n_iter"
+        value: "20"
+  objective:
+    type: maximize
+    objectiveMetricName: accuracy
+    additionalMetricNames:
+      - loss
+      - f1_score
+  parameters:
+    - name: learning_rate
+      parameterType: double
+      feasibleSpace:
+        min: "0.001"
+        max: "0.1"
+    - name: batch_size
+      parameterType: int
+      feasibleSpace:
+        min: "16"
+        max: "128"
+    - name: dropout_rate
+      parameterType: double
+      feasibleSpace:
+        min: "0.1"
+        max: "0.5"
+    - name: optimizer
+      parameterType: categorical
+      feasibleSpace:
+        list:
+          - "adam"
+          - "sgd"
+          - "rmsprop"
+  parallelTrialCount: 3
+  maxTrialCount: 30
+  maxFailedTrialCount: 5
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+      - name: learningRate
+        description: Learning rate for the model
+        reference: ${trialParameters.learningRate}
+      - name: batchSize
+        description: Batch size for training
+        reference: ${trialParameters.batchSize}
+      - name: dropoutRate
+        description: Dropout rate
+        reference: ${trialParameters.dropoutRate}
+      - name: optimizer
+        description: Optimizer type
+        reference: ${trialParameters.optimizer}
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            containers:
+              - name: training-container
+                image: automl-training:latest
+                command:
+                  - python
+                  - /app/src/training/train.py
+                  - --learning-rate=${trialParameters.learningRate}
+                  - --batch-size=${trialParameters.batchSize}
+                  - --dropout-rate=${trialParameters.dropoutRate}
+                  - --optimizer=${trialParameters.optimizer}
+                resources:
+                  limits:
+                    cpu: "2"
+                    memory: 4Gi
+                  requests:
+                    cpu: "1"
+                    memory: 2Gi
+            restartPolicy: Never
+
+
+

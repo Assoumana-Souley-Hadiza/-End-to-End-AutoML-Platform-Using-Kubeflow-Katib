@@ -1,0 +1,91 @@
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: pbt-optimization-experiment
+  namespace: kubeflow
+spec:
+  algorithm:
+    algorithmName: pbt
+    algorithmSettings:
+      - name: "population_size"
+        value: "10"
+      - name: "resample_probability"
+        value: "0.25"
+      - name: "perturbation_interval"
+        value: "4"
+      - name: "factor"
+        value: "1.2"
+  objective:
+    type: maximize
+    objectiveMetricName: accuracy
+    additionalMetricNames:
+      - loss
+      - training_accuracy
+  parameters:
+    - name: learning_rate
+      parameterType: double
+      feasibleSpace:
+        min: "0.0001"
+        max: "0.1"
+    - name: batch_size
+      parameterType: int
+      feasibleSpace:
+        min: "16"
+        max: "256"
+    - name: momentum
+      parameterType: double
+      feasibleSpace:
+        min: "0.0"
+        max: "0.99"
+    - name: dropout_rate
+      parameterType: double
+      feasibleSpace:
+        min: "0.0"
+        max: "0.5"
+  parallelTrialCount: 10
+  maxTrialCount: 200
+  maxFailedTrialCount: 20
+  resumePolicy: LongRunning
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+      - name: learningRate
+        description: Learning rate
+        reference: ${trialParameters.learningRate}
+      - name: batchSize
+        description: Batch size
+        reference: ${trialParameters.batchSize}
+      - name: momentum
+        description: Momentum
+        reference: ${trialParameters.momentum}
+      - name: dropoutRate
+        description: Dropout rate
+        reference: ${trialParameters.dropoutRate}
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            containers:
+              - name: training-container
+                image: automl-training:latest
+                command:
+                  - python
+                  - /app/src/training/train_pbt.py
+                  - --learning-rate=${trialParameters.learningRate}
+                  - --batch-size=${trialParameters.batchSize}
+                  - --momentum=${trialParameters.momentum}
+                  - --dropout-rate=${trialParameters.dropoutRate}
+                resources:
+                  limits:
+                    cpu: "4"
+                    memory: 8Gi
+                    nvidia.com/gpu: "1"
+                  requests:
+                    cpu: "2"
+                    memory: 4Gi
+            restartPolicy: Never
+
+
+

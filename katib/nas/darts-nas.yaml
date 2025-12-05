@@ -1,0 +1,118 @@
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: darts-nas-experiment
+  namespace: kubeflow
+spec:
+  algorithm:
+    algorithmName: darts
+    algorithmSettings:
+      - name: "num_epochs"
+        value: "50"
+      - name: "w_lr"
+        value: "0.025"
+      - name: "w_lr_min"
+        value: "0.001"
+      - name: "w_momentum"
+        value: "0.9"
+      - name: "w_weight_decay"
+        value: "0.0003"
+      - name: "w_grad_clip"
+        value: "5.0"
+      - name: "alpha_lr"
+        value: "0.0003"
+      - name: "alpha_weight_decay"
+        value: "0.001"
+  objective:
+    type: maximize
+    objectiveMetricName: accuracy
+    additionalMetricNames:
+      - loss
+      - validation_accuracy
+  nasConfig:
+    graphConfig:
+      numLayers: 8
+      inputSizes:
+        - 32
+        - 32
+        - 3
+      outputSizes:
+        - 10
+    operations:
+      - operationType: separable_convolution
+        parameters:
+          - name: filter_size
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "3"
+                - "5"
+          - name: num_filters
+            parameterType: int
+            feasibleSpace:
+              min: "8"
+              max: "64"
+      - operationType: dilated_convolution
+        parameters:
+          - name: filter_size
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "3"
+                - "5"
+          - name: num_filters
+            parameterType: int
+            feasibleSpace:
+              min: "8"
+              max: "64"
+      - operationType: max_pooling
+        parameters:
+          - name: filter_size
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "2"
+                - "3"
+      - operationType: average_pooling
+        parameters:
+          - name: filter_size
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "2"
+                - "3"
+      - operationType: identity
+  parallelTrialCount: 2
+  maxTrialCount: 30
+  maxFailedTrialCount: 5
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+      - name: architecture
+        description: DARTS architecture
+        reference: ${trialParameters.architecture}
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            containers:
+              - name: training-container
+                image: automl-nas-training:latest
+                command:
+                  - python
+                  - /app/src/training/train_darts.py
+                  - --architecture=${trialParameters.architecture}
+                resources:
+                  limits:
+                    cpu: "8"
+                    memory: 16Gi
+                    nvidia.com/gpu: "1"
+                  requests:
+                    cpu: "4"
+                    memory: 8Gi
+            restartPolicy: Never
+
+
+

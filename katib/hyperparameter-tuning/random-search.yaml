@@ -1,0 +1,104 @@
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: random-search-experiment
+  namespace: kubeflow
+spec:
+  algorithm:
+    algorithmName: random
+    algorithmSettings:
+      - name: "random_state"
+        value: "42"
+  objective:
+    type: maximize
+    objectiveMetricName: accuracy
+    additionalMetricNames:
+      - loss
+      - validation_accuracy
+  parameters:
+    - name: learning_rate
+      parameterType: double
+      feasibleSpace:
+        min: "0.001"
+        max: "0.1"
+    - name: batch_size
+      parameterType: int
+      feasibleSpace:
+        min: "16"
+        max: "128"
+    - name: num_layers
+      parameterType: int
+      feasibleSpace:
+        min: "2"
+        max: "8"
+    - name: hidden_units
+      parameterType: int
+      feasibleSpace:
+        min: "64"
+        max: "512"
+    - name: dropout_rate
+      parameterType: double
+      feasibleSpace:
+        min: "0.1"
+        max: "0.5"
+    - name: optimizer
+      parameterType: categorical
+      feasibleSpace:
+        list:
+          - "adam"
+          - "sgd"
+          - "rmsprop"
+          - "adagrad"
+  parallelTrialCount: 5
+  maxTrialCount: 50
+  maxFailedTrialCount: 5
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+      - name: learningRate
+        description: Learning rate
+        reference: ${trialParameters.learningRate}
+      - name: batchSize
+        description: Batch size
+        reference: ${trialParameters.batchSize}
+      - name: numLayers
+        description: Number of layers
+        reference: ${trialParameters.numLayers}
+      - name: hiddenUnits
+        description: Hidden units
+        reference: ${trialParameters.hiddenUnits}
+      - name: dropoutRate
+        description: Dropout rate
+        reference: ${trialParameters.dropoutRate}
+      - name: optimizer
+        description: Optimizer
+        reference: ${trialParameters.optimizer}
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            containers:
+              - name: training-container
+                image: automl-training:latest
+                command:
+                  - python
+                  - /app/src/training/train.py
+                  - --learning-rate=${trialParameters.learningRate}
+                  - --batch-size=${trialParameters.batchSize}
+                  - --num-layers=${trialParameters.numLayers}
+                  - --hidden-units=${trialParameters.hiddenUnits}
+                  - --dropout-rate=${trialParameters.dropoutRate}
+                  - --optimizer=${trialParameters.optimizer}
+                resources:
+                  limits:
+                    cpu: "2"
+                    memory: 4Gi
+                  requests:
+                    cpu: "1"
+                    memory: 2Gi
+            restartPolicy: Never
+
+
+

@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  training:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.training
+    image: automl-training:latest
+    volumes:
+      - ../data:/data
+      - ../models:/models
+    environment:
+      - MODEL_PATH=/models
+      - METRICS_PATH=/tmp/metrics.json
+    networks:
+      - automl-network
+
+  serving:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.serving
+    image: automl-serving:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../models:/mnt/models
+    environment:
+      - MODEL_NAME=automl-model
+      - MODEL_PATH=/mnt/models
+    networks:
+      - automl-network
+
+networks:
+  automl-network:
+    driver: bridge
+
+
+

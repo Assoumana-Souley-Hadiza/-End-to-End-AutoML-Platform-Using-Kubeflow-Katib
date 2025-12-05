@@ -1,0 +1,101 @@
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: tpe-optimization-experiment
+  namespace: kubeflow
+spec:
+  algorithm:
+    algorithmName: tpe
+    algorithmSettings:
+      - name: "random_state"
+        value: "42"
+      - name: "n_startup_trials"
+        value: "10"
+      - name: "n_ei_candidates"
+        value: "24"
+  objective:
+    type: maximize
+    objectiveMetricName: accuracy
+    additionalMetricNames:
+      - loss
+      - precision
+      - recall
+  parameters:
+    - name: learning_rate
+      parameterType: double
+      feasibleSpace:
+        min: "0.0001"
+        max: "0.1"
+    - name: batch_size
+      parameterType: int
+      feasibleSpace:
+        min: "8"
+        max: "256"
+    - name: num_layers
+      parameterType: int
+      feasibleSpace:
+        min: "2"
+        max: "10"
+    - name: hidden_units
+      parameterType: int
+      feasibleSpace:
+        min: "32"
+        max: "512"
+    - name: activation
+      parameterType: categorical
+      feasibleSpace:
+        list:
+          - "relu"
+          - "tanh"
+          - "sigmoid"
+          - "elu"
+  parallelTrialCount: 4
+  maxTrialCount: 50
+  maxFailedTrialCount: 5
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+      - name: learningRate
+        description: Learning rate
+        reference: ${trialParameters.learningRate}
+      - name: batchSize
+        description: Batch size
+        reference: ${trialParameters.batchSize}
+      - name: numLayers
+        description: Number of layers
+        reference: ${trialParameters.numLayers}
+      - name: hiddenUnits
+        description: Hidden units per layer
+        reference: ${trialParameters.hiddenUnits}
+      - name: activation
+        description: Activation function
+        reference: ${trialParameters.activation}
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            containers:
+              - name: training-container
+                image: automl-training:latest
+                command:
+                  - python
+                  - /app/src/training/train.py
+                  - --learning-rate=${trialParameters.learningRate}
+                  - --batch-size=${trialParameters.batchSize}
+                  - --num-layers=${trialParameters.numLayers}
+                  - --hidden-units=${trialParameters.hiddenUnits}
+                  - --activation=${trialParameters.activation}
+                resources:
+                  limits:
+                    cpu: "4"
+                    memory: 8Gi
+                    nvidia.com/gpu: "1"
+                  requests:
+                    cpu: "2"
+                    memory: 4Gi
+            restartPolicy: Never
+
+
+

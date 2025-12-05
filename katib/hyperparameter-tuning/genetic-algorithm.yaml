@@ -1,0 +1,103 @@
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: genetic-algorithm-experiment
+  namespace: kubeflow
+spec:
+  algorithm:
+    algorithmName: genetic-algorithm
+    algorithmSettings:
+      - name: "population_size"
+        value: "20"
+      - name: "mutation_prob"
+        value: "0.1"
+      - name: "crossover_prob"
+        value: "0.8"
+      - name: "random_state"
+        value: "42"
+  objective:
+    type: maximize
+    objectiveMetricName: accuracy
+    additionalMetricNames:
+      - loss
+      - validation_accuracy
+  parameters:
+    - name: learning_rate
+      parameterType: double
+      feasibleSpace:
+        min: "0.001"
+        max: "0.1"
+    - name: batch_size
+      parameterType: int
+      feasibleSpace:
+        min: "16"
+        max: "128"
+    - name: num_epochs
+      parameterType: int
+      feasibleSpace:
+        min: "10"
+        max: "100"
+    - name: weight_decay
+      parameterType: double
+      feasibleSpace:
+        min: "0.0"
+        max: "0.01"
+    - name: architecture
+      parameterType: categorical
+      feasibleSpace:
+        list:
+          - "resnet18"
+          - "resnet34"
+          - "resnet50"
+          - "vgg16"
+          - "vgg19"
+  parallelTrialCount: 5
+  maxTrialCount: 100
+  maxFailedTrialCount: 10
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+      - name: learningRate
+        description: Learning rate
+        reference: ${trialParameters.learningRate}
+      - name: batchSize
+        description: Batch size
+        reference: ${trialParameters.batchSize}
+      - name: numEpochs
+        description: Number of epochs
+        reference: ${trialParameters.numEpochs}
+      - name: weightDecay
+        description: Weight decay
+        reference: ${trialParameters.weightDecay}
+      - name: architecture
+        description: Model architecture
+        reference: ${trialParameters.architecture}
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            containers:
+              - name: training-container
+                image: automl-training:latest
+                command:
+                  - python
+                  - /app/src/training/train.py
+                  - --learning-rate=${trialParameters.learningRate}
+                  - --batch-size=${trialParameters.batchSize}
+                  - --num-epochs=${trialParameters.numEpochs}
+                  - --weight-decay=${trialParameters.weightDecay}
+                  - --architecture=${trialParameters.architecture}
+                resources:
+                  limits:
+                    cpu: "4"
+                    memory: 8Gi
+                    nvidia.com/gpu: "1"
+                  requests:
+                    cpu: "2"
+                    memory: 4Gi
+            restartPolicy: Never
+
+
+

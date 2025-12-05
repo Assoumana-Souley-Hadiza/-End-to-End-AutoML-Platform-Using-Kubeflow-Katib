@@ -1,0 +1,144 @@
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: nas-experiment
+  namespace: kubeflow
+spec:
+  algorithm:
+    algorithmName: enas
+    algorithmSettings:
+      - name: "controller_hidden_size"
+        value: "64"
+      - name: "controller_temperature"
+        value: "5.0"
+      - name: "controller_tanh_constant"
+        value: "2.5"
+      - name: "controller_entropy_weight"
+        value: "0.0001"
+      - name: "controller_baseline_decay"
+        value: "0.999"
+      - name: "controller_learning_rate"
+        value: "0.00035"
+      - name: "controller_skip_target"
+        value: "0.4"
+      - name: "controller_skip_weight"
+        value: "0.8"
+  objective:
+    type: maximize
+    objectiveMetricName: accuracy
+    additionalMetricNames:
+      - loss
+      - latency
+      - model_size
+  nasConfig:
+    graphConfig:
+      numLayers: 5
+      inputSizes:
+        - 32
+        - 32
+        - 3
+      outputSizes:
+        - 10
+    operations:
+      - operationType: convolution
+        parameters:
+          - name: filter_size
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "3"
+                - "5"
+                - "7"
+          - name: num_filters
+            parameterType: int
+            feasibleSpace:
+              min: "16"
+              max: "128"
+          - name: stride
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "1"
+                - "2"
+      - operationType: separable_convolution
+        parameters:
+          - name: filter_size
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "3"
+                - "5"
+          - name: num_filters
+            parameterType: int
+            feasibleSpace:
+              min: "16"
+              max: "128"
+          - name: stride
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "1"
+                - "2"
+      - operationType: max_pooling
+        parameters:
+          - name: filter_size
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "2"
+                - "3"
+          - name: stride
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "1"
+                - "2"
+      - operationType: average_pooling
+        parameters:
+          - name: filter_size
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "2"
+                - "3"
+          - name: stride
+            parameterType: categorical
+            feasibleSpace:
+              list:
+                - "1"
+                - "2"
+      - operationType: identity
+  parallelTrialCount: 3
+  maxTrialCount: 50
+  maxFailedTrialCount: 5
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+      - name: architecture
+        description: Neural architecture
+        reference: ${trialParameters.architecture}
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            containers:
+              - name: training-container
+                image: automl-nas-training:latest
+                command:
+                  - python
+                  - /app/src/training/train_nas.py
+                  - --architecture=${trialParameters.architecture}
+                resources:
+                  limits:
+                    cpu: "8"
+                    memory: 16Gi
+                    nvidia.com/gpu: "1"
+                  requests:
+                    cpu: "4"
+                    memory: 8Gi
+            restartPolicy: Never
+
+
+
