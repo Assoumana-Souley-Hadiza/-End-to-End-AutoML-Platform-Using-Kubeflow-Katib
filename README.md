@@ -38,8 +38,7 @@ Une plateforme AutoML complète utilisant Kubeflow Pipelines (KFP) et Katib pour
 
 ```
 ├── katib/
-│   ├── hyperparameter-tuning/    # Configurations HP tuning
-│   ├── nas/                      # Configurations NAS
+│   ├── hyperparameter-tuning/    # Configurations HP tuning                      # Configurations NAS
 │   └── experiments/              # Exemples d'expériences
 ├── pipelines/
 │   └── kfp/                      # Kubeflow Pipelines
@@ -47,8 +46,7 @@ Une plateforme AutoML complète utilisant Kubeflow Pipelines (KFP) et Katib pour
 │   ├── training/                 # Scripts d'entraînement
 │   ├── models/                   # Définitions de modèles
 │   └── utils/                    # Utilitaires
-├── serving/
-│   └── kfserving/                # Configurations KFServing
+# Configurations KFServing
 ├── notebooks/                    # Notebooks d'exemple
 ├── docker/                       # Dockerfiles
 └── docs/                         # Documentation
@@ -77,7 +75,6 @@ kubectl config set-context <your-context>
 ```bash
 kubectl apply -f katib/
 ```
-
 ## Utilisation
 
 ### Hyperparameter Tuning
@@ -85,7 +82,6 @@ kubectl apply -f katib/
 ```bash
 kubectl apply -f katib/hyperparameter-tuning/bayesian-optimization.yaml
 ```
-
 ### Exécuter un Pipeline KFP
 
 ```python
