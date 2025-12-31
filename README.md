@@ -7,16 +7,10 @@ Une plateforme AutoML complète utilisant Kubeflow Pipelines (KFP) et Katib pour
 - **Hyperparameter Tuning** : Support de plusieurs algorithmes d'optimisation
   - Bayesian Optimization
   - Tree-structured Parzen Estimator (TPE)
-  - Genetic Algorithm (GA)
-  - Population Based Training (PBT)
-  - Grid Search (distribué)
   - Random Search (distribué)
-
-- **Neural Architecture Search (NAS)** : Recherche automatique d'architectures de réseaux de neurones
 
 - **Kubeflow Pipelines Integration** : Pipelines ML orchestrés avec KFP
 
-- **Model Serving** : Export et déploiement des meilleurs modèles via KFServing
 
 ## Architecture
 
@@ -29,7 +23,7 @@ Une plateforme AutoML complète utilisant Kubeflow Pipelines (KFP) et Katib pour
          ▼
 ┌─────────────────┐
 │     Katib       │
-│  (HP Tuning/NAS)│
+│  (HP Tuning)│
 └────────┬────────┘
          │
          ▼
@@ -38,11 +32,6 @@ Une plateforme AutoML complète utilisant Kubeflow Pipelines (KFP) et Katib pour
 │  (Distributed)  │
 └────────┬────────┘
          │
-         ▼
-┌─────────────────┐
-│   KFServing     │
-│  (Model Serving)│
-└─────────────────┘
 ```
 
 ## Structure du Projet
@@ -70,7 +59,6 @@ Une plateforme AutoML complète utilisant Kubeflow Pipelines (KFP) et Katib pour
 - Kubernetes cluster
 - Kubeflow installé
 - Katib installé
-- KFServing installé
 - Python 3.8+
 
 ## Installation
@@ -88,7 +76,6 @@ kubectl config set-context <your-context>
 3. Déployer les composants:
 ```bash
 kubectl apply -f katib/
-kubectl apply -f serving/kfserving/
 ```
 
 ## Utilisation
@@ -97,12 +84,6 @@ kubectl apply -f serving/kfserving/
 
 ```bash
 kubectl apply -f katib/hyperparameter-tuning/bayesian-optimization.yaml
-```
-
-### Neural Architecture Search
-
-```bash
-kubectl apply -f katib/nas/nas-experiment.yaml
 ```
 
 ### Exécuter un Pipeline KFP
@@ -120,7 +101,6 @@ automl_pipeline.submit()
 Voir le dossier `docs/` pour plus de détails sur:
 - Configuration de Katib
 - Création de pipelines KFP
-- Déploiement avec KFServing
 - Exemples d'utilisation
 
 ## License
