@@ -1,0 +1,502 @@
+# PIPELINE DEFINITION
+# Name: automl-pipeline-leger-sans-kserve
+# Description: Pipeline AutoML optimise pour 3GB RAM - Katib seulement
+# Inputs:
+#    algorithm: str [Default: 'random']
+#    max_trials: int [Default: 5.0]
+#    model_name: str [Default: 'iris-automl-model']
+#    namespace: str [Default: 'kubeflow']
+#    parallel_trials: int [Default: 1.0]
+#    training_image: str [Default: 'automl-training:latest']
+components:
+  comp-create-katib-experiment:
+    executorLabel: exec-create-katib-experiment
+    inputDefinitions:
+      parameters:
+        algorithm:
+          parameterType: STRING
+        experiment_name:
+          parameterType: STRING
+        max_trials:
+          parameterType: NUMBER_INTEGER
+        namespace:
+          parameterType: STRING
+        parallel_trials:
+          parameterType: NUMBER_INTEGER
+        training_image:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        experiment_config:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-load-and-preprocess-data:
+    executorLabel: exec-load-and-preprocess-data
+    outputDefinitions:
+      artifacts:
+        output_data:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        output_labels:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        data_path:
+          parameterType: STRING
+        num_features:
+          parameterType: NUMBER_INTEGER
+        num_samples:
+          parameterType: NUMBER_INTEGER
+  comp-save-best-model-info:
+    executorLabel: exec-save-best-model-info
+    inputDefinitions:
+      parameters:
+        best_accuracy:
+          parameterType: NUMBER_DOUBLE
+        best_params:
+          parameterType: STRING
+        best_trial:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        model_report:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        report_summary:
+          parameterType: STRING
+  comp-submit-katib-experiment:
+    executorLabel: exec-submit-katib-experiment
+    inputDefinitions:
+      artifacts:
+        experiment_config:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        experiment_name:
+          parameterType: STRING
+        max_wait_time:
+          defaultValue: 3600.0
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        namespace:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        best_accuracy:
+          parameterType: NUMBER_DOUBLE
+        best_params:
+          parameterType: STRING
+        best_trial:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-create-katib-experiment:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - create_katib_experiment
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kubernetes==28.1.0'\
+          \ 'pyyaml==6.0.1'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef create_katib_experiment(\n    experiment_name: str,\n    algorithm:\
+          \ str,\n    max_trials: int,\n    parallel_trials: int,\n    namespace:\
+          \ str,\n    training_image: str,\n    experiment_config: OutputPath(\"yaml\"\
+          ),\n) -> str:\n    \"\"\"Create Katib experiment configuration\"\"\"\n \
+          \   import yaml\n\n    # Experiment template based on algorithm\n    experiment_template\
+          \ = {\n        \"apiVersion\": \"kubeflow.org/v1beta1\",\n        \"kind\"\
+          : \"Experiment\",\n        \"metadata\": {\n            \"name\": experiment_name,\n\
+          \            \"namespace\": namespace,\n        },\n        \"spec\": {\n\
+          \            \"algorithm\": {\n                \"algorithmName\": algorithm,\n\
+          \            },\n            \"objective\": {\n                \"type\"\
+          : \"maximize\",\n                \"goal\": 0.99,\n                \"objectiveMetricName\"\
+          : \"accuracy\",\n                \"additionalMetricNames\": [\"loss\"],\n\
+          \            },\n            \"parameters\": [\n                {\n    \
+          \                \"name\": \"learning_rate\",\n                    \"parameterType\"\
+          : \"double\",\n                    \"feasibleSpace\": {\"min\": \"0.001\"\
+          , \"max\": \"0.1\"},\n                },\n                {\n          \
+          \          \"name\": \"num_layers\",\n                    \"parameterType\"\
+          : \"int\",\n                    \"feasibleSpace\": {\"min\": \"1\", \"max\"\
+          : \"3\"},\n                },\n                {\n                    \"\
+          name\": \"optimizer\",\n                    \"parameterType\": \"categorical\"\
+          ,\n                    \"feasibleSpace\": {\"list\": [\"sgd\", \"adam\"\
+          , \"rmsprop\"]},\n                },\n            ],\n            \"parallelTrialCount\"\
+          : parallel_trials,\n            \"maxTrialCount\": max_trials,\n       \
+          \     \"maxFailedTrialCount\": 3,\n            \"trialTemplate\": {\n  \
+          \              \"primaryContainerName\": \"training-container\",\n     \
+          \           \"trialParameters\": [\n                    {\n            \
+          \            \"name\": \"learningRate\",\n                        \"description\"\
+          : \"Learning rate for the training model\",\n                        \"\
+          reference\": \"learning_rate\",\n                    },\n              \
+          \      {\n                        \"name\": \"numLayers\",\n           \
+          \             \"description\": \"Number of layers for the model\",\n   \
+          \                     \"reference\": \"num_layers\",\n                 \
+          \   },\n                    {\n                        \"name\": \"optimizer\"\
+          ,\n                        \"description\": \"Optimizer algorithm\",\n \
+          \                       \"reference\": \"optimizer\",\n                \
+          \    },\n                ],\n                \"trialSpec\": {\n        \
+          \            \"apiVersion\": \"batch/v1\",\n                    \"kind\"\
+          : \"Job\",\n                    \"spec\": {\n                        \"\
+          template\": {\n                            \"metadata\": {\n           \
+          \                     \"annotations\": {\n                             \
+          \       \"sidecar.istio.io/inject\": \"false\",\n                      \
+          \          }\n                            },\n                         \
+          \   \"spec\": {\n                                \"containers\": [\n   \
+          \                                 {\n                                  \
+          \      \"name\": \"training-container\",\n                             \
+          \           \"image\": training_image,\n                               \
+          \         \"imagePullPolicy\": \"IfNotPresent\",\n                     \
+          \                   \"command\": [\n                                   \
+          \         \"python\",\n                                            \"-u\"\
+          ,\n                                            \"/app/src/training/train.py\"\
+          ,\n                                            \"--learning-rate=${trialParameters.learningRate}\"\
+          ,\n                                            \"--num-layers=${trialParameters.numLayers}\"\
+          ,\n                                            \"--optimizer=${trialParameters.optimizer}\"\
+          ,\n                                        ],\n                        \
+          \                \"resources\": {\n                                    \
+          \        \"limits\": {\"cpu\": \"500m\", \"memory\": \"1Gi\"},\n       \
+          \                                     \"requests\": {\"cpu\": \"250m\",\
+          \ \"memory\": \"512Mi\"},\n                                        },\n\
+          \                                    }\n                               \
+          \ ],\n                                \"restartPolicy\": \"Never\",\n  \
+          \                          }\n                        }\n              \
+          \      },\n                },\n            },\n        },\n    }\n\n   \
+          \ # Save experiment config\n    with open(experiment_config, \"w\") as f:\n\
+          \        yaml.dump(experiment_template, f)\n\n    print(f\"Katib experiment\
+          \ configuration created: {experiment_name}\")\n    return experiment_name\n\
+          \n"
+        image: python:3.9
+    exec-load-and-preprocess-data:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - load_and_preprocess_data
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==2.0.3'\
+          \ 'scikit-learn==1.3.2' 'numpy==1.24.3'  &&  python3 -m pip install --quiet\
+          \ --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef load_and_preprocess_data(\n    output_data: OutputPath(\"csv\"\
+          ),\n    output_labels: OutputPath(\"csv\"),\n) -> NamedTuple(\"Outputs\"\
+          , [(\"num_samples\", int), (\"num_features\", int), (\"data_path\", str)]):\n\
+          \    \"\"\"Load Iris dataset and preprocess data for training\"\"\"\n  \
+          \  import pandas as pd\n    from sklearn.datasets import load_iris\n   \
+          \ from typing import NamedTuple\n\n    # Load Iris dataset\n    iris = load_iris()\n\
+          \    df = pd.DataFrame(iris.data, columns=iris.feature_names)\n    df['target']\
+          \ = iris.target\n\n    # Separate features and labels\n    labels = df['target']\n\
+          \    features = df.drop('target', axis=1)\n\n    # Save preprocessed data\n\
+          \    features.to_csv(output_data, index=False)\n    labels.to_csv(output_labels,\
+          \ index=False)\n\n    print(f\"Dataset loaded: {len(features)} samples,\
+          \ {len(features.columns)} features\")\n\n    outputs = NamedTuple(\"Outputs\"\
+          , [(\"num_samples\", int), (\"num_features\", int), (\"data_path\", str)])\n\
+          \    return outputs(\n        num_samples=len(features),\n        num_features=len(features.columns),\n\
+          \        data_path=output_data,\n    )\n\n"
+        image: python:3.9
+    exec-save-best-model-info:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - save_best_model_info
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==2.0.3'\
+          \ 'scikit-learn==1.3.2' 'numpy==1.24.3'  &&  python3 -m pip install --quiet\
+          \ --no-warn-script-location 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5;\
+          \ python_version<\"3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef save_best_model_info(\n    best_trial: str,\n    best_accuracy:\
+          \ float,\n    best_params: str,\n    model_report: OutputPath(\"txt\"),\n\
+          ) -> NamedTuple(\"Outputs\", [(\"report_summary\", str)]):\n    \"\"\"Save\
+          \ best model information and metrics\"\"\"\n    import json\n    from typing\
+          \ import NamedTuple\n    from datetime import datetime\n\n    params = json.loads(best_params)\
+          \ if best_params else {}\n\n    report = f\"\"\"\n{'='*60}\nAUTOML PIPELINE\
+          \ - RESULTATS FINAUX\n{'='*60}\n\nDate: {datetime.now().strftime('%Y-%m-%d\
+          \ %H:%M:%S')}\n\nMEILLEUR MODELE TROUVE:\n-----------------------\nTrial:\
+          \ {best_trial}\nAccuracy: {best_accuracy:.4f} ({best_accuracy*100:.2f}%)\n\
+          \nHYPERPARAMETRES OPTIMAUX:\n------------------------\n\"\"\"\n    for key,\
+          \ value in params.items():\n        report += f\"  {key}: {value}\\n\"\n\
+          \n    report += f\"\"\"\nCOMMENT UTILISER CE MODELE:\n---------------------------\n\
+          1. Les meilleurs hyperparametres sont ci-dessus\n2. Entrainez un modele\
+          \ final avec ces parametres\n3. Le modele est sauvegarde dans le container\
+          \ du best trial\n4. Recuperez le modele avec: kubectl cp <pod>:/tmp/model/model.h5\
+          \ ./model.h5\n\nCOMMANDE POUR RECUPERER LE MODELE:\n----------------------------------\n\
+          # Trouvez le pod du meilleur trial\nkubectl get pods -n kubeflow | grep\
+          \ {best_trial.split('-trial-')[0] if best_trial else 'experiment'}\n\n#\
+          \ Copiez le modele\nkubectl cp kubeflow/<pod-name>:/tmp/model/model.h5 ./iris_model.h5\n\
+          \nALTERNATIVE - Entrainer localement avec les meilleurs params:\n-------------------------------------------------------------\n\
+          python train.py \\\\\n    --learning-rate={params.get('learning_rate', 0.01)}\
+          \ \\\\\n    --num-layers={params.get('num_layers', 2)} \\\\\n    --optimizer={params.get('optimizer',\
+          \ 'adam')}\n\n{'='*60}\n\"\"\"\n\n    # Save report\n    with open(model_report,\
+          \ 'w') as f:\n        f.write(report)\n\n    print(report)\n\n    summary\
+          \ = f\"Best model: {best_trial} | Accuracy: {best_accuracy:.4f}\"\n\n  \
+          \  outputs = NamedTuple(\"Outputs\", [(\"report_summary\", str)])\n    return\
+          \ outputs(report_summary=summary)\n\n"
+        image: python:3.9
+    exec-submit-katib-experiment:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - submit_katib_experiment
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kubernetes==28.1.0'\
+          \ 'pyyaml==6.0.1'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.2' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef submit_katib_experiment(\n    experiment_name: str,\n    namespace:\
+          \ str,\n    experiment_config: InputPath(\"yaml\"),\n    max_wait_time:\
+          \ int = 3600,\n) -> NamedTuple(\"Outputs\", [(\"best_trial\", str), (\"\
+          best_accuracy\", float), (\"best_params\", str)]):\n    \"\"\"Submit and\
+          \ monitor Katib experiment\"\"\"\n    import yaml\n    import time\n   \
+          \ import json\n    from kubernetes import client, config\n    from typing\
+          \ import NamedTuple\n\n    # Load kubeconfig\n    try:\n        config.load_incluster_config()\n\
+          \    except:\n        config.load_kube_config()\n\n    # Load experiment\
+          \ config\n    with open(experiment_config, \"r\") as f:\n        exp_dict\
+          \ = yaml.safe_load(f)\n\n    # Create Katib API client\n    custom_api =\
+          \ client.CustomObjectsApi()\n\n    # Create experiment\n    try:\n     \
+          \   custom_api.create_namespaced_custom_object(\n            group=\"kubeflow.org\"\
+          ,\n            version=\"v1beta1\",\n            namespace=namespace,\n\
+          \            plural=\"experiments\",\n            body=exp_dict,\n     \
+          \   )\n        print(f\"Katib experiment {experiment_name} submitted\")\n\
+          \    except client.exceptions.ApiException as e:\n        if e.status ==\
+          \ 409:\n            print(f\"Experiment {experiment_name} already exists,\
+          \ monitoring existing experiment\")\n        else:\n            raise e\n\
+          \n    # Wait for experiment to complete\n    start_time = time.time()\n\n\
+          \    while time.time() - start_time < max_wait_time:\n        try:\n   \
+          \         exp = custom_api.get_namespaced_custom_object(\n             \
+          \   group=\"kubeflow.org\",\n                version=\"v1beta1\",\n    \
+          \            namespace=namespace,\n                plural=\"experiments\"\
+          ,\n                name=experiment_name,\n            )\n\n            status\
+          \ = exp.get(\"status\", {})\n            conditions = status.get(\"conditions\"\
+          , [])\n\n            # Check if experiment is completed\n            for\
+          \ condition in conditions:\n                if condition.get(\"type\") ==\
+          \ \"Succeeded\" and condition.get(\"status\") == \"True\":\n           \
+          \         # Experiment completed successfully\n                    current_optimal\
+          \ = status.get(\"currentOptimalTrial\", {})\n                    best_trial_name\
+          \ = current_optimal.get(\"bestTrialName\", \"\")\n\n                   \
+          \ observation = current_optimal.get(\"observation\", {})\n             \
+          \       metrics = observation.get(\"metrics\", [])\n\n                 \
+          \   best_accuracy = 0.0\n                    for metric in metrics:\n  \
+          \                      if metric.get(\"name\") == \"accuracy\":\n      \
+          \                      best_accuracy = float(metric.get(\"latest\", \"0.0\"\
+          ))\n                            break\n\n                    # Get best\
+          \ parameters\n                    param_assignments = current_optimal.get(\"\
+          parameterAssignments\", [])\n                    best_params = {p.get(\"\
+          name\"): p.get(\"value\") for p in param_assignments}\n\n              \
+          \      print(f\"Experiment completed successfully!\")\n                \
+          \    print(f\"Best trial: {best_trial_name}\")\n                    print(f\"\
+          Best accuracy: {best_accuracy}\")\n                    print(f\"Best parameters:\
+          \ {best_params}\")\n\n                    outputs = NamedTuple(\"Outputs\"\
+          , [(\"best_trial\", str), (\"best_accuracy\", float), (\"best_params\",\
+          \ str)])\n                    return outputs(\n                        best_trial=best_trial_name,\n\
+          \                        best_accuracy=best_accuracy,\n                \
+          \        best_params=json.dumps(best_params)\n                    )\n\n\
+          \                elif condition.get(\"type\") == \"Failed\" and condition.get(\"\
+          status\") == \"True\":\n                    print(f\"Experiment failed:\
+          \ {condition.get('message', 'Unknown error')}\")\n                    outputs\
+          \ = NamedTuple(\"Outputs\", [(\"best_trial\", str), (\"best_accuracy\",\
+          \ float), (\"best_params\", str)])\n                    return outputs(best_trial=\"\
+          \", best_accuracy=0.0, best_params=\"{}\")\n\n            # Print progress\n\
+          \            trials_running = status.get(\"trialsRunning\", 0)\n       \
+          \     trials_succeeded = status.get(\"trialsSucceeded\", 0)\n          \
+          \  trials_failed = status.get(\"trialsFailed\", 0)\n            print(f\"\
+          Progress - Running: {trials_running}, Succeeded: {trials_succeeded}, Failed:\
+          \ {trials_failed}\")\n\n        except Exception as e:\n            print(f\"\
+          Error checking experiment status: {e}\")\n\n        time.sleep(30)  # Check\
+          \ every 30 seconds\n\n    # Timeout\n    print(f\"Experiment timed out after\
+          \ {max_wait_time} seconds\")\n    outputs = NamedTuple(\"Outputs\", [(\"\
+          best_trial\", str), (\"best_accuracy\", float), (\"best_params\", str)])\n\
+          \    return outputs(best_trial=\"\", best_accuracy=0.0, best_params=\"{}\"\
+          )\n\n"
+        image: python:3.9
+pipelineInfo:
+  description: Pipeline AutoML optimise pour 3GB RAM - Katib seulement
+  name: automl-pipeline-leger-sans-kserve
+root:
+  dag:
+    tasks:
+      create-katib-experiment:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-create-katib-experiment
+        dependentTasks:
+        - load-and-preprocess-data
+        inputs:
+          parameters:
+            algorithm:
+              componentInputParameter: algorithm
+            experiment_name:
+              runtimeValue:
+                constant: '{{$.inputs.parameters[''pipelinechannel--model_name'']}}-experiment'
+            max_trials:
+              componentInputParameter: max_trials
+            namespace:
+              componentInputParameter: namespace
+            parallel_trials:
+              componentInputParameter: parallel_trials
+            pipelinechannel--model_name:
+              componentInputParameter: model_name
+            training_image:
+              componentInputParameter: training_image
+        taskInfo:
+          name: create-katib-experiment
+      load-and-preprocess-data:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-load-and-preprocess-data
+        taskInfo:
+          name: load-and-preprocess-data
+      save-best-model-info:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-save-best-model-info
+        dependentTasks:
+        - submit-katib-experiment
+        inputs:
+          parameters:
+            best_accuracy:
+              taskOutputParameter:
+                outputParameterKey: best_accuracy
+                producerTask: submit-katib-experiment
+            best_params:
+              taskOutputParameter:
+                outputParameterKey: best_params
+                producerTask: submit-katib-experiment
+            best_trial:
+              taskOutputParameter:
+                outputParameterKey: best_trial
+                producerTask: submit-katib-experiment
+        taskInfo:
+          name: save-best-model-info
+      submit-katib-experiment:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-submit-katib-experiment
+        dependentTasks:
+        - create-katib-experiment
+        inputs:
+          artifacts:
+            experiment_config:
+              taskOutputArtifact:
+                outputArtifactKey: experiment_config
+                producerTask: create-katib-experiment
+          parameters:
+            experiment_name:
+              runtimeValue:
+                constant: '{{$.inputs.parameters[''pipelinechannel--model_name'']}}-experiment'
+            max_wait_time:
+              runtimeValue:
+                constant: 3600.0
+            namespace:
+              componentInputParameter: namespace
+            pipelinechannel--model_name:
+              componentInputParameter: model_name
+        taskInfo:
+          name: submit-katib-experiment
+  inputDefinitions:
+    parameters:
+      algorithm:
+        defaultValue: random
+        isOptional: true
+        parameterType: STRING
+      max_trials:
+        defaultValue: 5.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      model_name:
+        defaultValue: iris-automl-model
+        isOptional: true
+        parameterType: STRING
+      namespace:
+        defaultValue: kubeflow
+        isOptional: true
+        parameterType: STRING
+      parallel_trials:
+        defaultValue: 1.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      training_image:
+        defaultValue: automl-training:latest
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.2
